@@ -93,6 +93,7 @@ class Puzzle:
         self.nodes: dict[str, PuzzleNode] = {}
         self.edges: list[PuzzleEdge] = []
         self._adj: dict[str, list[tuple[str, float]]] = {}
+        self._scale: Optional[float] = None  # Factor de escala admisible (calculado lazy)
 
     def add_node(self, node: PuzzleNode):
         self.nodes[node.id] = node
@@ -101,18 +102,43 @@ class Puzzle:
     def add_edge(self, source: str, target: str, weight: float = 1.0):
         self.edges.append(PuzzleEdge(source, target, weight))
         self._adj.setdefault(source, []).append((target, weight))
+        self._scale = None  # Invalidar caché al agregar aristas
 
     def neighbors(self, node_id: str) -> list[tuple[str, float]]:
         return self._adj.get(node_id, [])
 
+    def _compute_scale(self) -> float:
+        """
+        Calcula el mayor factor de escala k tal que h(n) = euclid(n, goal) * k
+        sea ADMISIBLE para todas las aristas del grafo.
+
+        Demostración de admisibilidad:
+        - Por cada arista (u→v, w): euclid(u, v) * k ≤ w  (por construcción de k)
+        - Por desigualdad triangular: euclid(n, goal) ≤ Σ euclid(aristas_del_camino)
+        - Por tanto: euclid(n, goal) * k ≤ Σ w_arista = costo_real del camino ✓
+        """
+        min_ratio = float('inf')
+        for edge in self.edges:
+            n = self.nodes[edge.source]
+            t = self.nodes[edge.target]
+            euclid = ((t.x - n.x)**2 + (t.y - n.y)**2) ** 0.5
+            if euclid > 0:
+                min_ratio = min(min_ratio, edge.weight / euclid)
+        return min_ratio if min_ratio != float('inf') else 1.0
+
     def heuristic(self, node_id: str) -> float:
         """
-        Heurística admisible: distancia euclidiana normalizada al nodo meta.
-        h(n) <= costo_real → admisible → A* encuentra el óptimo.
+        Heurística ADMISIBLE: nunca sobreestima el costo real al goal.
+        h(n) = distancia_euclidiana(n, goal) * _scale
+
+        El factor _scale garantiza h(n) ≤ costo_real(n → goal) para todo n.
         """
+        if self._scale is None:
+            self._scale = self._compute_scale()
         n = self.nodes[node_id]
         g = self.nodes[self.goal]
-        return round(((g.x - n.x)**2 + (g.y - n.y)**2) ** 0.5 * 20, 2)
+        euclid = ((g.x - n.x)**2 + (g.y - n.y)**2) ** 0.5
+        return round(euclid * self._scale, 2)
 
 
 # ─── CONSTRUCTOR DEL ESCENARIO ─────────────────────────────────────────────────

@@ -7,8 +7,8 @@ Consolas y estadísticas en la parte inferior.
 
 import tkinter as tk
 from tkinter import ttk, messagebox
+from typing import Optional
 import time
-import threading
 import math
 import sys
 import os
@@ -79,7 +79,9 @@ class EscapeRoomGUI:
         self.path_edges: set[str] = set()    # Aristas del camino actual
         self.puzzle_anim: set[str] = set()   # Nodos puzzle animados
         self.puzzle_path_edges: set[str] = set()
-        self.current_puzzle: Puzzle | None = None
+        self.current_puzzle: Optional[Puzzle] = None
+        self.ever_expanded: set[str] = set() # Nodos únicos expandidos globalmente
+        self._exec_start: float = 0.0        # Timestamp de inicio de ejecución
         self.running = False
         self.step_gen = None
 
@@ -219,7 +221,7 @@ class EscapeRoomGUI:
 
         self.stat_vars = {}
         for key, lbl in [("g_nodes","Nodos expandidos:"),("g_depth","Profundidad:"),
-                          ("g_cost","Costo total:"),("g_algo","Algoritmo:")]:
+                          ("g_cost","Costo total:"),("g_time","Tiempo:"),("g_algo","Algoritmo:")]:
             row = tk.Frame(gf, bg=COLORS["bg3"])
             row.pack(fill="x")
             tk.Label(row, text=lbl, bg=COLORS["bg3"],
@@ -257,10 +259,12 @@ class EscapeRoomGUI:
         self.puzzle_anim.clear()
         self.puzzle_path_edges.clear()
         self.current_puzzle = None
+        self.ever_expanded.clear()
+        self._exec_start = 0.0
         self._clear_log(self.log_global)
         self._clear_log(self.log_puzzle)
         for k in self.stat_vars:
-            self.stat_vars[k].set("0" if k != "p_time" else "-")
+            self.stat_vars[k].set("0" if k not in ("p_time", "g_time") else "-")
         self.stat_vars["g_algo"].set(self.algo_var.get())
         self.btn_run.config(text="▶  Ejecutar")
         self.status_lbl.config(text="● Listo", fg=COLORS["text_dim"])
@@ -458,6 +462,9 @@ class EscapeRoomGUI:
         self.stat_vars["g_depth"].set(str(self.global_metrics.max_depth))
         self.stat_vars["g_cost"].set(f"{self.global_metrics.total_cost:.1f}")
         self.stat_vars["g_algo"].set(self.algo_var.get())
+        if self._exec_start > 0:
+            elapsed = time.time() - self._exec_start
+            self.stat_vars["g_time"].set(f"{elapsed:.3f}s")
 
         if self.puzzle_metrics:
             last = list(self.puzzle_metrics.values())[-1]
@@ -477,6 +484,7 @@ class EscapeRoomGUI:
             self.status_lbl.config(text="● Ejecutando...", fg=COLORS["green"])
             if not self.step_gen:
                 self.step_gen = self._make_generator()
+                self._exec_start = time.time()
             self._auto_run()
 
     def _auto_run(self):
@@ -490,6 +498,7 @@ class EscapeRoomGUI:
     def _step(self):
         if not self.step_gen:
             self.step_gen = self._make_generator()
+            self._exec_start = time.time()
         self._advance_one_step()
 
     def _advance_one_step(self) -> bool:
@@ -519,17 +528,23 @@ class EscapeRoomGUI:
             for i in range(len(event.path)-1):
                 self.path_edges.add(f"{event.path[i]}-{event.path[i+1]}")
         elif event.type == "locked":
+            self._log(self.log_global,
+                      f"- Initiating informed search for Puzzle at Node {{{event.node}}}")
             self.status_lbl.config(text=f"🔒 Resolviendo puzzle...", fg=COLORS["yellow"])
         elif event.type == "goal":
             self.anim_nodes.clear()
             for i in range(len(event.path)-1):
                 self.path_edges.add(f"{event.path[i]}-{event.path[i+1]}")
+            elapsed = time.time() - self._exec_start if self._exec_start > 0 else 0.0
+            self.global_metrics.execution_time = elapsed
+            self.stat_vars["g_time"].set(f"{elapsed:.3f}s")
             self.status_lbl.config(text="✓ ¡Meta alcanzada!", fg=COLORS["green"])
             messagebox.showinfo("¡Escape Room Resuelto!",
                                 f"Camino: {' → '.join(event.path)}\n\n"
                                 f"Nodos expandidos: {self.global_metrics.nodes_expanded}\n"
                                 f"Profundidad: {self.global_metrics.max_depth}\n"
-                                f"Costo: {self.global_metrics.total_cost:.1f}")
+                                f"Costo: {self.global_metrics.total_cost:.1f}\n"
+                                f"Tiempo total: {elapsed:.3f}s")
 
     def _handle_puzzle_event(self, event: PuzzleEvent):
         self._log(self.log_puzzle, event.message)
@@ -539,19 +554,22 @@ class EscapeRoomGUI:
             self.puzzle_path_edges.clear()
             for i in range(len(event.path)-1):
                 self.puzzle_path_edges.add(f"{event.path[i]}-{event.path[i+1]}")
-            if event.metrics:
-                pid = list(self.puzzles.keys())[len(self.puzzle_metrics)]
-                self.puzzle_metrics[pid] = event.metrics
+            # Las métricas se asignan con la clave correcta en _make_generator
 
     # ─── GENERADOR INTEGRADO ──────────────────────────────────────────────────
     def _make_generator(self):
-        """Generador que coordina búsqueda global + puzzles."""
-        start, goal = "A", "M"
+        """
+        Generador que coordina búsqueda global + puzzles.
+        Siempre reinicia desde A para explorar el grafo completo;
+        ever_expanded garantiza que los nodos ya contados no inflen métricas.
+        """
+        goal = "M"
 
         for _ in range(50):  # máx iteraciones
             algo_fn = bfs if self.algo_var.get() == "BFS" else dfs
-            gen = algo_fn(self.graph, start, goal,
-                          self.solved_puzzles, self.global_metrics)
+            gen = algo_fn(self.graph, "A", goal,
+                          self.solved_puzzles, self.global_metrics,
+                          self.ever_expanded)
 
             goal_reached = False
             locked_node = None
@@ -565,10 +583,8 @@ class EscapeRoomGUI:
                 if event.type == "locked":
                     locked_node = event.node
                     locked_puzzle = event.puzzle_id
-                    if event.path:
-                        start = event.path[-1]
 
-                    # Resolver puzzle
+                    # Resolver puzzle con A*
                     if locked_puzzle and locked_puzzle not in self.solved_puzzles:
                         puzzle = self.puzzles[locked_puzzle]
                         self.current_puzzle = puzzle
@@ -584,9 +600,10 @@ class EscapeRoomGUI:
                             self.solved_puzzles.add(locked_puzzle)
                             self.graph.unlock(locked_node)
                             self.puzzle_metrics[locked_puzzle] = pm
+                            self._log(self.log_puzzle,
+                                      f"- Puzzle Solved! Unlocking Node {{{locked_node}}}")
                             self._log(self.log_global,
-                                      f"✓ {locked_node} desbloqueado. Reanudando...")
-                            start = "A"
+                                      f"✓ Nodo {{{locked_node}}} desbloqueado. Reanudando búsqueda...")
                     break
 
             if goal_reached:

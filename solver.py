@@ -37,6 +37,7 @@ class SolverResult:
             f"    Nodos expandidos: {self.global_metrics.nodes_expanded}",
             f"    Profundidad max:  {self.global_metrics.max_depth}",
             f"    Costo total:      {self.global_metrics.total_cost:.1f}",
+            f"    Tiempo ejecución: {self.global_metrics.execution_time:.4f}s",
         ]
         if self.puzzle_metrics:
             lines += ["", "  PUZZLES (A*)"]
@@ -75,6 +76,7 @@ class EscapeRoomSolver:
         self.solved_puzzles: set[str] = set()
         self.global_metrics = SearchMetrics()
         self.puzzle_metrics: dict[str, PuzzleMetrics] = {}
+        self.ever_expanded: set[str] = set()     # Nodos únicos expandidos globalmente
         self.result: Optional[SolverResult] = None
 
     def reset(self):
@@ -82,6 +84,7 @@ class EscapeRoomSolver:
         self.solved_puzzles.clear()
         self.global_metrics = SearchMetrics()
         self.puzzle_metrics.clear()
+        self.ever_expanded: set[str] = set()
         self.result = None
 
     def _run_puzzle(self, puzzle_id: str) -> PuzzleMetrics:
@@ -107,6 +110,7 @@ class EscapeRoomSolver:
         self._run_global_loop()
         total_time = time.time() - t0
 
+        self.global_metrics.execution_time = total_time
         self.result = SolverResult(
             success=bool(self.global_metrics.solution_path),
             global_path=self.global_metrics.solution_path,
@@ -119,21 +123,21 @@ class EscapeRoomSolver:
     def _run_global_loop(self):
         """
         Bucle principal que coordina la búsqueda global con los puzzles.
-        Reanuda la búsqueda global cada vez que se desbloquea un nodo.
-        """
-        start, goal = "A", "M"
-        # Reiniciamos el generador en cada reanudación para mantener el estado
-        # de la frontera. En la implementación simple, recreamos el generador
-        # con los puzzles ya resueltos para que el BFS/DFS omita esos nodos.
 
-        max_iterations = 100   # Seguridad anti-loop infinito
+        Tras desbloquear un nodo, siempre reinicia desde A para que BFS/DFS
+        explore el grafo completo y encuentre el camino óptimo. El conjunto
+        ever_expanded evita inflar metrics.nodes_expanded con re-expansiones.
+        """
+        goal = "M"
+        max_iterations = 100
         iteration = 0
 
         while iteration < max_iterations:
             iteration += 1
             algo_fn = bfs if self.algorithm == "bfs" else dfs
-            gen = algo_fn(self.graph, start, goal,
-                          self.solved_puzzles, self.global_metrics)
+            gen = algo_fn(self.graph, "A", goal,
+                          self.solved_puzzles, self.global_metrics,
+                          self.ever_expanded)
 
             goal_reached = False
             locked_node = None
@@ -150,23 +154,19 @@ class EscapeRoomSolver:
                 if event.type == "locked":
                     locked_node = event.node
                     locked_puzzle = event.puzzle_id
-                    # Actualizar el nodo de inicio para reanudar desde donde estamos
-                    if event.path:
-                        start = event.path[-1]
                     break
 
             if goal_reached:
                 break
 
             if locked_puzzle and locked_puzzle not in self.solved_puzzles:
-                # Resolver el puzzle
+                # Resolver el puzzle con A*
                 pm = self._run_puzzle(locked_puzzle)
                 if pm.solution_path:
                     self.solved_puzzles.add(locked_puzzle)
                     self.graph.unlock(locked_node)
-                    # Continuar desde el nodo anterior al bloqueado
-                    if self.global_metrics.solution_path:
-                        start = "A"  # Reiniciar para que BFS explore con el nodo desbloqueado
+                    # Reiniciar desde A para explorar el grafo completo
+                    # con el nodo recién desbloqueado disponible
                 else:
                     break   # Puzzle sin solución → imposible continuar
             else:
@@ -178,13 +178,14 @@ class EscapeRoomSolver:
         Generador que la GUI puede consumir paso a paso.
         Yields tuplas ("global", SearchEvent) o ("puzzle", PuzzleEvent).
         """
-        start, goal = "A", "M"
+        goal = "M"
         max_iter = 100
 
         for _ in range(max_iter):
             algo_fn = bfs if self.algorithm == "bfs" else dfs
-            gen = algo_fn(self.graph, start, goal,
-                          self.solved_puzzles, self.global_metrics)
+            gen = algo_fn(self.graph, "A", goal,
+                          self.solved_puzzles, self.global_metrics,
+                          self.ever_expanded)
 
             goal_reached = False
             locked_node = None
@@ -200,10 +201,8 @@ class EscapeRoomSolver:
                 if event.type == "locked":
                     locked_node = event.node
                     locked_puzzle = event.puzzle_id
-                    if event.path:
-                        start = event.path[-1]
 
-                    # Ahora resolver el puzzle
+                    # Resolver el puzzle con A*
                     if locked_puzzle and locked_puzzle not in self.solved_puzzles:
                         puzzle = self.puzzles[locked_puzzle]
                         pm = PuzzleMetrics()
@@ -218,7 +217,7 @@ class EscapeRoomSolver:
                         if pm.solution_path:
                             self.solved_puzzles.add(locked_puzzle)
                             self.graph.unlock(locked_node)
-                            start = "A"
+                            # Reiniciar desde A con ever_expanded para métricas correctas
                     break
 
             if goal_reached:

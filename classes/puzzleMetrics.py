@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 @dataclass
 class PuzzleMetrics:
     nodes_expanded: int = 0
-    total_cost: int = 0
+    total_cost: float = 0.0
     solution_path: list[str] = field(default_factory=list)
     execution_time: float = 0.0
 

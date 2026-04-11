@@ -15,12 +15,14 @@ class SearchMetrics:
     nodes_expanded: int = 0
     max_depth: int = 0
     total_cost: float = 0.0
+    execution_time: float = 0.0
     solution_path: list[str] = field(default_factory=list)
 
     def __str__(self):
         return (f"Nodos expandidos: {self.nodes_expanded} | "
                 f"Profundidad: {self.max_depth} | "
                 f"Costo: {self.total_cost:.1f} | "
+                f"Tiempo: {self.execution_time:.4f}s | "
                 f"Camino: {' → '.join(self.solution_path)}")
 
 
@@ -41,12 +43,16 @@ def bfs(graph: EscapeGraph,
         start: str,
         goal: str,
         solved_puzzles: set[str],
-        metrics: SearchMetrics) -> Generator[SearchEvent, None, None]:
+        metrics: SearchMetrics,
+        ever_expanded: Optional[set] = None) -> Generator[SearchEvent, None, None]:
     """
     Búsqueda por Amplitud (BFS) sobre el grafo global.
 
     Estrategia: Cola FIFO → explora nivel por nivel.
     Garantía: Encuentra el camino con MENOS PASOS (no necesariamente menor costo).
+
+    ever_expanded: conjunto persistente entre reinicios para contar nodos
+                   únicos y evitar inflar metrics.nodes_expanded.
 
     Yields SearchEvent para cada paso relevante, permitiendo que la GUI
     dibuje el proceso en tiempo real (visualización paso a paso).
@@ -65,8 +71,12 @@ def bfs(graph: EscapeGraph,
             continue
         explored.add(current)
 
-        # Actualizar métricas
-        metrics.nodes_expanded += 1
+        # Solo contar como nodo nuevo si no fue expandido en una iteración anterior
+        if ever_expanded is None or current not in ever_expanded:
+            metrics.nodes_expanded += 1
+            if ever_expanded is not None:
+                ever_expanded.add(current)
+
         depth = len(path) - 1
         metrics.max_depth = max(metrics.max_depth, depth)
         metrics.total_cost = cost
@@ -90,20 +100,17 @@ def bfs(graph: EscapeGraph,
 
             node_state = graph.get_state(neighbor)
 
-            # ¿Nodo bloqueado? → lanzar puzzle
+            # ¿Nodo bloqueado? → pausar para que el solver lance A*
             if node_state == NodeState.LOCKED:
                 puzzle_id = graph.nodes[neighbor].puzzle_id
                 if puzzle_id not in solved_puzzles:
                     yield SearchEvent("locked", neighbor, path,
                                       f"⚠ Nodo bloqueado {{{neighbor}}} encontrado",
                                       puzzle_id=puzzle_id)
-                    # La GUI resolverá el puzzle; aquí esperamos.
-                    # Una vez resuelto, puzzle_id estará en solved_puzzles.
-                    return  # Pausar → la GUI reanuda llamando de nuevo
+                    return  # Pausar → la GUI/solver reanuda con nueva llamada
 
-            # Si ya fue desbloqueado (en ejecuciones anteriores o acaba de desbloquearse)
-            current_state = graph.get_state(neighbor)
-            if current_state != NodeState.LOCKED:
+            # Si ya fue desbloqueado, agregar a la cola
+            if graph.get_state(neighbor) != NodeState.LOCKED:
                 queue.append((neighbor, path + [neighbor], cost + edge_weight))
 
     yield SearchEvent("log", None, [],
@@ -115,12 +122,15 @@ def dfs(graph: EscapeGraph,
         start: str,
         goal: str,
         solved_puzzles: set[str],
-        metrics: SearchMetrics) -> Generator[SearchEvent, None, None]:
+        metrics: SearchMetrics,
+        ever_expanded: Optional[set] = None) -> Generator[SearchEvent, None, None]:
     """
     Búsqueda en Profundidad (DFS) sobre el grafo global.
 
     Estrategia: Pila LIFO → explora tan profundo como posible.
     NO garantiza camino óptimo, pero usa menos memoria en grafos amplios.
+
+    ever_expanded: mismo rol que en BFS — evita contar re-expansiones.
     """
     stack = [(start, [start], 0.0)]
     explored = set()
@@ -135,7 +145,12 @@ def dfs(graph: EscapeGraph,
             continue
         explored.add(current)
 
-        metrics.nodes_expanded += 1
+        # Solo contar como nodo nuevo si no fue expandido antes
+        if ever_expanded is None or current not in ever_expanded:
+            metrics.nodes_expanded += 1
+            if ever_expanded is not None:
+                ever_expanded.add(current)
+
         depth = len(path) - 1
         metrics.max_depth = max(metrics.max_depth, depth)
         metrics.total_cost = cost

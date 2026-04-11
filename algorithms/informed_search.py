@@ -1,5 +1,5 @@
 """
-informed_search.py - Algoritmo A* para resolver Puzzles (Búsqueda Informada)
+informed_search.py - Algoritmo A* para resolver Puzzles
 Cada nodo bloqueado tiene un subgrafo independiente; A* lo resuelve con heurística.
 """
 
@@ -8,47 +8,15 @@ from dataclasses import dataclass, field
 from typing import Generator, Optional
 from graph import Puzzle
 
+# Importar la clase para ver la métricas
+from classes.puzzleMetrics import PuzzleMetrics
 
-# ─── MÉTRICAS DEL PUZZLE ────────────z─────────────────────────────────────────
-@dataclass
-class PuzzleMetrics:
-    nodes_expanded: int = 0
-    total_cost: float = 0.0
-    solution_path: list[str] = field(default_factory=list)
-    execution_time: float = 0.0    # segundos
-
-    def __str__(self):
-        return (f"Nodos expandidos: {self.nodes_expanded} | "
-                f"Costo total: {self.total_cost:.1f} | "
-                f"Camino: {' → '.join(self.solution_path)} | "
-                f"Tiempo: {self.execution_time:.4f}s")
+#Importar la clase para los nodos del subproblema
+from classes.astarNode import AStarNode
 
 
-# ─── NODO INTERNO DE A* ───────────────────────────────────────────────────────
-@dataclass(order=True)
-class AStarNode:
-    """
-    Nodo en la cola de prioridad de A*.
-    f = g + h  (costo acumulado + heurística)
-    Se ordena por f para que heapq entregue siempre el menor.
-    """
-    f: float
-    g: float = field(compare=False)
-    h: float = field(compare=False)
-    node_id: str = field(compare=False)
-    path: list[str] = field(compare=False, default_factory=list)
-
-
-# ─── EVENTO DE PUZZLE (para la GUI) ──────────────────────────────────────────
-@dataclass
-class PuzzleEvent:
-    type: str          # "expand", "solved", "log"
-    node_id: str = ""
-    g: float = 0.0
-    h: float = 0.0
-    path: list[str] = field(default_factory=list)
-    message: str = ""
-    metrics: Optional[PuzzleMetrics] = None
+# Importar clase para cargar la información a la GUI
+from classes.puzzleEvent import PuzzleEvent
 
 
 # ─── A* ──────────────────────────────────────────────────────────────────────

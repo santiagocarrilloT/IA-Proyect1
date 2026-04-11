@@ -10,6 +10,7 @@ Uso:
 
 import sys
 import os
+import argparse
 
 # Asegurarse de que los módulos locales se importen correctamente
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -35,9 +36,11 @@ def run_cli(algorithm: str = "bfs"):
     print(f"  ESCAPE ROOM SOLVER — Modo Consola ({algorithm.upper()})")
     print("═"*55 + "\n")
 
+    algo_label = "BFS" if algorithm == "bfs" else "DFS"
+
     def on_global(event: SearchEvent):
         prefix = {
-            "expand": "  [BFS] ",
+            "expand": f"  [{algo_label}] ",
             "locked": "  [🔒] ",
             "goal":   "  [✓]  ",
             "log":    "  [---] ",
@@ -62,15 +65,13 @@ def run_cli(algorithm: str = "bfs"):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    cli_mode = "--cli" in args
-    algo = "bfs"
-    if "--algo" in args:
-        idx = args.index("--algo")
-        if idx + 1 < len(args):
-            algo = args[idx + 1].lower()
-
-    if cli_mode:
-        run_cli(algo)
+    parser = argparse.ArgumentParser(description="Escape Room Solver")
+    parser.add_argument("--cli", action="store_true", help="Ejecutar en modo consola")
+    parser.add_argument("--algo", choices=["bfs", "dfs"], default="bfs", help="Algoritmo de búsqueda global (bfs o dfs)")
+    
+    args = parser.parse_args()
+    
+    if args.cli:
+        run_cli(args.algo)
     else:
         run_gui()

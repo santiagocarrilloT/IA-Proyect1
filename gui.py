@@ -133,7 +133,7 @@ class EscapeRoomGUI:
         ctrl = tk.Frame(footer, bg=COLORS["bg3"])
         ctrl.pack(fill="x", padx=6, pady=4)
 
-        btn_style = {"bg": COLORS["bg4"], "fg": COLORS["white"],
+        btn_style = {"bg": COLORS["bg4"],
                      "font": ("Courier", 10), "relief": "flat",
                      "padx": 12, "pady": 4, "cursor": "hand2",
                      "activebackground": COLORS["border"],
@@ -144,7 +144,7 @@ class EscapeRoomGUI:
         self.btn_run.pack(side="left", padx=(0,4))
 
         tk.Button(ctrl, text="⏭  Paso", **btn_style,
-                  command=self._step).pack(side="left", padx=4)
+                  fg=COLORS["white"], command=self._step).pack(side="left", padx=4)
 
         tk.Button(ctrl, text="↺  Reiniciar", **btn_style,
                   fg=COLORS["red"], command=self._reset).pack(side="left", padx=4)

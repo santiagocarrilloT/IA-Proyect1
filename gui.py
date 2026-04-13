@@ -24,29 +24,29 @@ from algorithms.informed_search import PuzzleEvent, PuzzleMetrics, astar
 
 # ─── PALETA DE COLORES ────────────────────────────────────────────────────────
 COLORS = {
-    "bg":          "#0a0e1a",
-    "bg2":         "#111827",
-    "bg3":         "#1a2235",
-    "bg4":         "#1e2a3e",
-    "border":      "#2a3550",
-    "green":       "#00ff88",
-    "green_dim":   "#00cc66",
-    "blue":        "#4488ff",
-    "blue_dim":    "#2255cc",
-    "red":         "#ff4466",
-    "yellow":      "#ffcc00",
-    "gray":        "#556677",
-    "gray_dim":    "#334455",
-    "purple":      "#aa66ff",
-    "cyan":        "#00ccff",
-    "white":       "#e8eeff",
-    "text_dim":    "#8899bb",
-    "node_start":  "#00ff88",
-    "node_avail":  "#4488ff",
-    "node_locked": "#556677",
-    "node_solved": "#00cc66",
-    "node_goal":   "#ff4466",
-    "node_expand": "#ffcc00",
+    "bg":          "#ffffff",
+    "bg2":         "#f0f0f0",
+    "bg3":         "#e0e0e0",
+    "bg4":         "#d0d0d0",
+    "border":      "#666666",
+    "green":       "#00aa00",
+    "green_dim":   "#008800",
+    "blue":        "#0000ff",
+    "blue_dim":    "#0000aa",
+    "red":         "#ff0000",
+    "yellow":      "#ffaa00",
+    "gray":        "#888888",
+    "gray_dim":    "#666666",
+    "purple":      "#aa00aa",
+    "cyan":        "#00aaaa",
+    "white":       "#000000",
+    "text_dim":    "#666666",
+    "node_start":  "#00aa00",
+    "node_avail":  "#0000ff",
+    "node_locked": "#888888",
+    "node_solved": "#008800",
+    "node_goal":   "#ff0000",
+    "node_expand": "#ffaa00",
 }
 
 STATE_COLOR = {
@@ -109,9 +109,10 @@ class EscapeRoomGUI:
         lf = tk.Frame(panels, bg=COLORS["bg2"],
                       highlightbackground=COLORS["border"], highlightthickness=1)
         lf.pack(side="left", fill="both", expand=True, padx=(4,2), pady=4)
-        tk.Label(lf, text="GLOBAL GRAPH — Búsqueda No Informada",
+        self.graph_label = tk.Label(lf, text="GLOBAL GRAPH — Búsqueda No Informada (Amplitud)",
                  bg=COLORS["bg2"], fg=COLORS["text_dim"],
-                 font=("Courier", 9)).pack(anchor="w", padx=8, pady=(4,0))
+                 font=("Courier", 9))
+        self.graph_label.pack(anchor="w", padx=8, pady=(4,0))
         self.canvas_global = tk.Canvas(lf, bg=COLORS["bg"], highlightthickness=0)
         self.canvas_global.pack(fill="both", expand=True, padx=4, pady=4)
         self.canvas_global.bind("<Configure>", lambda e: self._draw_all())
@@ -151,22 +152,13 @@ class EscapeRoomGUI:
         tk.Button(ctrl, text="↺  Reiniciar", **btn_style,
                   fg=COLORS["red"], command=self._reset).pack(side="left", padx=4)
 
-        tk.Label(ctrl, text="Velocidad:", bg=COLORS["bg3"],
-                 fg=COLORS["text_dim"], font=("Courier", 9)).pack(side="left", padx=(12,4))
-        self.speed_var = tk.StringVar(value="Normal")
-        speed_map = {"Lenta": 900, "Normal": 450, "Rápida": 180, "Turbo": 60}
-        self.speed_map = speed_map
-        spd = ttk.Combobox(ctrl, textvariable=self.speed_var,
-                           values=list(speed_map.keys()), width=8, state="readonly")
-        spd.pack(side="left")
-
         tk.Label(ctrl, text="Algoritmo:", bg=COLORS["bg3"],
                  fg=COLORS["text_dim"], font=("Courier", 9)).pack(side="left", padx=(12,4))
-        self.algo_var = tk.StringVar(value="BFS")
+        self.algo_var = tk.StringVar(value="Amplitud")
         algo = ttk.Combobox(ctrl, textvariable=self.algo_var,
-                            values=["BFS", "DFS"], width=6, state="readonly")
+                            values=["Amplitud", "Profundidad"], width=12, state="readonly")
         algo.pack(side="left")
-        algo.bind("<<ComboboxSelected>>", lambda e: self._reset())
+        algo.bind("<<ComboboxSelected>>", self._on_algo_change)
 
         # Leyenda
         leg = tk.Frame(ctrl, bg=COLORS["bg3"])
@@ -191,7 +183,7 @@ class EscapeRoomGUI:
         gl.pack(side="left", fill="both", expand=True)
         tk.Label(gl, text="▸ CONSOLA GLOBAL", bg=COLORS["bg2"],
                  fg=COLORS["green"], font=("Courier", 8)).pack(anchor="w", padx=6, pady=(2,0))
-        self.log_global = tk.Text(gl, height=5, bg=COLORS["bg"],
+        self.log_global = tk.Text(gl, height=8, bg=COLORS["bg"],
                                   fg=COLORS["cyan"], font=("Courier", 9),
                                   state="disabled", relief="flat", wrap="word")
         self.log_global.pack(fill="both", expand=True, padx=4, pady=(0,4))
@@ -201,7 +193,7 @@ class EscapeRoomGUI:
         pl.pack(side="left", fill="both", expand=True)
         tk.Label(pl, text="▸ CONSOLA PUZZLE", bg=COLORS["bg2"],
                  fg=COLORS["purple"], font=("Courier", 8)).pack(anchor="w", padx=6, pady=(2,0))
-        self.log_puzzle = tk.Text(pl, height=5, bg=COLORS["bg"],
+        self.log_puzzle = tk.Text(pl, height=8, bg=COLORS["bg"],
                                   fg=COLORS["purple"], font=("Courier", 9),
                                   state="disabled", relief="flat", wrap="word")
         self.log_puzzle.pack(fill="both", expand=True, padx=4, pady=(0,4))
@@ -246,6 +238,10 @@ class EscapeRoomGUI:
                      fg=COLORS["white"], font=("Courier", 8, "bold")).pack(side="right")
             self.stat_vars[key] = var
 
+    def _on_algo_change(self, event=None):
+        self.graph_label.config(text=f"GLOBAL GRAPH — Búsqueda No Informada ({self.algo_var.get()})")
+        self._reset()
+
     # ─── RESET ────────────────────────────────────────────────────────────────
     def _reset(self):
         self.running = False
@@ -279,12 +275,6 @@ class EscapeRoomGUI:
         if W < 10 or H < 10:
             return
 
-        # Grid de fondo
-        for x in range(0, W, 40):
-            cv.create_line(x, 0, x, H, fill="#1a2235", width=1)
-        for y in range(0, H, 40):
-            cv.create_line(0, y, W, y, fill="#1a2235", width=1)
-
         # Calcular posiciones en píxeles
         pad = 40
         npos = {}
@@ -300,7 +290,7 @@ class EscapeRoomGUI:
             color = COLORS["blue"] if is_path else COLORS["border"]
             width = 2 if is_path else 1
             dash = () if is_path else (4, 4)
-            self._draw_arrow(cv, pa, pb, color, width, dash, r=22)
+            self._draw_arrow(cv, pa, pb, color, width, dash, r=22, draw_arrow=is_path or (edge.source in self.anim_nodes))
 
         # Nodos
         R = 22
@@ -308,13 +298,6 @@ class EscapeRoomGUI:
             state = self.graph.get_state(nid)
             is_anim = nid in self.anim_nodes
             color = COLORS["node_expand"] if is_anim else STATE_COLOR.get(state, COLORS["gray"])
-
-            # Glow effect
-            if is_anim or state in (NodeState.START, NodeState.GOAL, NodeState.SOLVED):
-                for r_off in (6, 4, 2):
-                    cv.create_oval(nx-R-r_off, ny-R-r_off, nx+R+r_off, ny+R+r_off,
-                                   outline=color, fill="", width=1,
-                                   stipple="gray25" if r_off == 6 else "gray50" if r_off == 4 else "")
 
             cv.create_oval(nx-R, ny-R, nx+R, ny+R,
                            fill=self._hex_alpha(color, 0.2), outline=color, width=2)
@@ -340,11 +323,6 @@ class EscapeRoomGUI:
         if W < 10 or H < 10:
             return
 
-        for x in range(0, W, 40):
-            cv.create_line(x, 0, x, H, fill="#1a2235", width=1)
-        for y in range(0, H, 40):
-            cv.create_line(0, y, W, y, fill="#1a2235", width=1)
-
         if not self.current_puzzle:
             cv.create_text(W//2, H//2, text="Esperando puzzle...",
                            font=("Courier", 12), fill=COLORS["gray"])
@@ -365,7 +343,7 @@ class EscapeRoomGUI:
             is_path = key in self.puzzle_path_edges
             color = COLORS["purple"] if is_path else COLORS["border"]
             self._draw_arrow(cv, pa, pb, color, 2 if is_path else 1,
-                             () if is_path else (3, 3), r=22)
+                             () if is_path else (3, 3), r=22, draw_arrow=is_path or (pe.source in self.puzzle_anim))
             # Peso
             mx, my = (pa[0]+pb[0])//2, (pa[1]+pb[1])//2
             cv.create_text(mx, my-12, text=str(int(pe.weight)),
@@ -392,11 +370,6 @@ class EscapeRoomGUI:
             else:
                 color = COLORS["node_avail"] if is_in_path else COLORS["gray"]
 
-            if is_anim or is_start or is_goal:
-                for r_off in (5, 3):
-                    cv.create_oval(nx-R-r_off, ny-R-r_off, nx+R+r_off, ny+R+r_off,
-                                   outline=color, fill="", width=1)
-
             cv.create_oval(nx-R, ny-R, nx+R, ny+R,
                            fill=self._hex_alpha(color, 0.25), outline=color, width=2)
             cv.create_text(nx, ny, text=nid, font=("Courier", 11, "bold"), fill=color)
@@ -416,7 +389,7 @@ class EscapeRoomGUI:
         self._draw_puzzle()
         self._update_stats()
 
-    def _draw_arrow(self, cv, pa, pb, color, width=1, dash=(), r=20):
+    def _draw_arrow(self, cv, pa, pb, color, width=1, dash=(), r=20, draw_arrow=True):
         dx = pb[0]-pa[0]; dy = pb[1]-pa[1]
         length = math.hypot(dx, dy)
         if length < 1:
@@ -424,19 +397,20 @@ class EscapeRoomGUI:
         sx = pa[0] + dx/length*r; sy = pa[1] + dy/length*r
         ex = pb[0] - dx/length*r; ey = pb[1] - dy/length*r
         cv.create_line(sx, sy, ex, ey, fill=color, width=width, dash=dash)
-        ang = math.atan2(ey-sy, ex-sx)
-        size = 9
-        cv.create_polygon(
-            ex, ey,
-            ex - size*math.cos(ang-0.4), ey - size*math.sin(ang-0.4),
-            ex - size*math.cos(ang+0.4), ey - size*math.sin(ang+0.4),
-            fill=color, outline=color
-        )
+        if draw_arrow:
+            ang = math.atan2(ey-sy, ex-sx)
+            size = 9
+            cv.create_polygon(
+                ex, ey,
+                ex - size*math.cos(ang-0.4), ey - size*math.sin(ang-0.4),
+                ex - size*math.cos(ang+0.4), ey - size*math.sin(ang+0.4),
+                fill=color, outline=color
+            )
 
     @staticmethod
     def _hex_alpha(hex_color: str, alpha: float) -> str:
-        """Simula transparencia mezclando con el fondo #0a0e1a."""
-        bg = (10, 14, 26)
+        """Simula transparencia mezclando con el fondo #ffffff."""
+        bg = (255, 255, 255)
         r = int(hex_color[1:3], 16)
         g = int(hex_color[3:5], 16)
         b = int(hex_color[5:7], 16)
@@ -492,7 +466,7 @@ class EscapeRoomGUI:
             return
         finished = self._advance_one_step()
         if not finished:
-            delay = self.speed_map.get(self.speed_var.get(), 450)
+            delay = 450
             self.root.after(delay, self._auto_run)
 
     def _step(self):
@@ -566,7 +540,7 @@ class EscapeRoomGUI:
         goal = "M"
 
         for _ in range(50):  # máx iteraciones
-            algo_fn = bfs if self.algo_var.get() == "BFS" else dfs
+            algo_fn = bfs if self.algo_var.get() == "Amplitud" else dfs
             gen = algo_fn(self.graph, "A", goal,
                           self.solved_puzzles, self.global_metrics,
                           self.ever_expanded)
